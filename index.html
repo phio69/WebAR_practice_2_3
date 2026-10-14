@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Задание 3: AR-маска с MindAR Face Tracking</title>
+
+  <!-- 1. Подключаем библиотеки. Порядок важен: сначала A-Frame, потом MindAR.
+          Внимание: здесь сборка MindAR для ЛИЦ (mindar-face), а не для картинок. -->
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-aframe.prod.js"></script>
+
+  <!-- 2. Помощник: подгоняет размер модели под лицо (ширина лица ≈ 1 единица).
+          Модель центрируется по горизонтали и вертикали, а её ПЕРЕДНЯЯ часть
+          ставится в точку привязки. Для очков это значит: оправа на переносице,
+          дужки уходят назад, в голову. -->
+  <script>
+    AFRAME.registerComponent('fit-to-face', {
+      schema: { size: { default: 1.0 } },  // наибольший размер модели относительно ширины лица
+      init() {
+        this.el.addEventListener('model-loaded', () => {
+          const THREE = AFRAME.THREE;
+          const mesh = this.el.getObject3D('mesh');
+          const parent = mesh.parent;
+          parent.remove(mesh);                      // измеряем модель отдельно от сцены
+          mesh.updateMatrixWorld(true);
+          const box = new THREE.Box3().setFromObject(mesh);
+          parent.add(mesh);
+          const size = box.getSize(new THREE.Vector3());
+          const center = box.getCenter(new THREE.Vector3());
+          const k = this.data.size / Math.max(size.x, size.y, size.z);
+          mesh.scale.multiplyScalar(k);
+          mesh.position.set(
+            (mesh.position.x - center.x) * k,       // по центру слева-направо
+            (mesh.position.y - center.y) * k,       // по центру сверху-вниз
+            (mesh.position.z - box.max.z) * k       // передней частью в точку привязки
+          );
+        });
+      }
+    });
+  </script>
+
+  <style>
+    body { margin: 0; }
+  </style>
+</head>
+<body>
+  <!--
+    3. Сцена с трекингом лица.
+       mindar-face      — включает распознавание лица (нейросеть MediaPipe, 468 ключевых точек)
+       filterMinCF/Beta — сглаживание: меньше filterMinCF = меньше дрожания в покое,
+                          больше filterBeta = маска быстрее догоняет голову при резком повороте
+  -->
+  <a-scene
+    mindar-face="filterMinCF: 0.0001; filterBeta: 1"
+    color-space="sRGB"
+    renderer="colorManagement: true"
+    light="defaultLightsEnabled: false"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
+
+    <!-- 4. Заранее загружаем модели -->
+    <a-assets>
+      <!-- Твоя модель: очки, шляпа или маска -->
+      <a-asset-item id="mask" src="model.glb"></a-asset-item>
+      <!-- «Невидимая голова» из официальных примеров MindAR (берётся из интернета) -->
+      <a-asset-item id="head" src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@master/examples/face-tracking/assets/sparkar/headOccluder.glb"></a-asset-item>
+    </a-assets>
+
+    <!-- 5. Камера. Её положение задаёт трекинг, сама она не двигается. -->
+    <a-camera active="false" position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <!-- 6. Освещение -->
+    <a-light type="ambient" color="#ffffff" intensity="0.9"></a-light>
+    <a-light type="directional" color="#ffffff" intensity="1.2" position="0 1 2"></a-light>
+
+    <!-- 7. Окклюдер: невидимая голова, которая прячет части модели «за головой»
+            (например, дужки очков). Сама она не рисуется, только закрывает то, что за ней. -->
+    <a-entity mindar-face-target="anchorIndex: 168">
+      <a-gltf-model mindar-face-occluder src="#head"
+        position="0 -0.3 0.15" rotation="0 0 0" scale="0.065 0.065 0.065">
+      </a-gltf-model>
+    </a-entity>
+
+    <!-- 8. Маска, привязанная к ключевой точке лица.
+            anchorIndex — номер точки: 168 = переносица (очки), 10 = верх лба (шляпа),
+            1 = кончик носа, 152 = подбородок.
+            position / rotation / scale — тонкая настройка, как сидит модель. -->
+    <a-entity mindar-face-target="anchorIndex: 168">
+      <a-gltf-model
+        src="#mask"
+        fit-to-face="size: 1.0"
+        position="0 0 0.02"
+        rotation="0 0 0">
+      </a-gltf-model>
+    </a-entity>
+  </a-scene>
+</body>
+</html>
